@@ -1,0 +1,8 @@
+.history/
+private/
+*.swp
+*.tmp
+*.creds
+*.jwt
+*.bak
+
