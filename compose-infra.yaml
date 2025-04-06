@@ -34,7 +34,7 @@ services:
       - "0.0.0.0:8222:8222"
       - "0.0.0.0:8080:8080"
     healthcheck:
-      test: ["CMD-SHELL", "nats", "server", "ping", "-s", "localhost:4222"]
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8222/healthz || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5

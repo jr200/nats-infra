@@ -13,31 +13,31 @@ This script requires the following environment variables:
 Required:
     OPERATOR_NAME    Name of the local NATS operator to create
     ACCOUNT_NAME     Name of the local+remote NATS account to create
-    USER_NAME        Name of the local NATS user to create
     NATS_CONTAINER   Name of the container running the NATS server
     NSC_CONTAINER    Name of a container that can adminster credentials on the NATS server (requires nsc).
 
 Optional:
+    USER_NAME        Name of a local NATS user to create
     NATS_URL         URL of the NATS server (default: nats://127.0.0.1:4222)
     CONTAINER_CLI    Container CLI to use, podman|docker|kubectl (default: podman)
 
 Example:
     export OPERATOR_NAME=local-operator
     export ACCOUNT_NAME=MY-TEAM
-    export USER_NAME=static-user
     export NATS_CONTAINER=nats-1
     export NSC_CONTAINER=nsc-admin-1
+    export USER_NAME=static-user
     export NATS_URL=nats://127.0.0.1:4222
     export CONTAINER_CLI=podman
 EOF
 }
 
-# Set default NATS URL if not provided
+# Set defaults if not provided
 NATS_URL=${NATS_URL:-nats://127.0.0.1:4222}
 CONTAINER_CLI=${CONTAINER_CLI:-podman}
 
 # Validate required environment variables
-if [ -z "$OPERATOR_NAME" ] || [ -z "$ACCOUNT_NAME" ] || [ -z "$USER_NAME" ] || \
+if [ -z "$OPERATOR_NAME" ] || [ -z "$ACCOUNT_NAME" ] || \
    [ -z "$NATS_CONTAINER" ] || [ -z "$NSC_CONTAINER" ]; then
     echo_stderr "Error: Missing required environment variables"
     help
@@ -137,18 +137,18 @@ echo_stderr "Account ${ACCOUNT_NAME} imported successfully."
 # ----------------------------------------------------------------------------
 # Create a local user
 # ----------------------------------------------------------------------------
-echo_stderr "Creating new user ${USER_NAME} for account ${ACCOUNT_NAME}..."
 
-1>&2 nsc add user -a ${ACCOUNT_NAME} -n ${USER_NAME} --allow-pubsub '>' || echo_stderr "User ${USER_NAME} already exists."
-nsc generate creds --account ${ACCOUNT_NAME} --name ${USER_NAME}
+if [ -z "${USER_NAME}" ]; then
+    echo_stderr "Skipped user creation."
+else
+    echo_stderr "Creating new user ${USER_NAME} for account ${ACCOUNT_NAME}..."
 
-1>&2 nats context save ${ACCOUNT_NAME}-${USER_NAME} --nsc=nsc://${OPERATOR_NAME}/${ACCOUNT_NAME}/${USER_NAME} -s ${NATS_URL} --select
+    1>&2 nsc add user -a ${ACCOUNT_NAME} -n ${USER_NAME} --allow-pubsub '>' || echo_stderr "User ${USER_NAME} already exists."
+    nsc generate creds --account ${ACCOUNT_NAME} --name ${USER_NAME}
 
+    1>&2 nats context save ${ACCOUNT_NAME}-${USER_NAME} --nsc=nsc://${OPERATOR_NAME}/${ACCOUNT_NAME}/${USER_NAME} -s ${NATS_URL} --select
 
-# ----------------------------------------------------------------------------
-# Quick test of the new user credentials
-# ----------------------------------------------------------------------------
-echo_stderr Sanity test...
-1>&2 nats sub test.${ACCOUNT_NAME}.${USER_NAME} &
-1>&2 nats pub test.${ACCOUNT_NAME}.${USER_NAME} my-test-item-01
-
+    echo_stderr Sanity test of new user...
+    1>&2 nats sub --count=1 --wait=10s test.${ACCOUNT_NAME}.${USER_NAME} &
+    1>&2 nats pub test.${ACCOUNT_NAME}.${USER_NAME} my-test-item-01
+fi

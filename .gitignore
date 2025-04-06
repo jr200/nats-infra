@@ -1,5 +1,6 @@
 .history/
 private/
+nats-secrets/
 *.swp
 *.tmp
 *.creds

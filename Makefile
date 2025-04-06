@@ -7,12 +7,12 @@ config-networks:
 	podman network create -d bridge --ignore --internal infra-public
 
 up: config-networks
-	podman compose -f compose-infra.yml -p ${TEAM_NAME} up -d
+	podman compose -f compose-infra.yaml -p ${TEAM_NAME} up -d
 
 down:
-	podman compose  -f compose-infra.yml -p ${TEAM_NAME} down || echo "No running containers"
+	podman compose  -f compose-infra.yaml -p ${TEAM_NAME} down || echo "No running containers"
 
-cleanup-nats:
+cleanup-nats: down
 	podman volume rm -f ${TEAM_NAME}_nats_config
 	podman volume rm -f ${TEAM_NAME}_nats_nsc_data
 	podman volume rm -f ${TEAM_NAME}_nats_jetstream_data
