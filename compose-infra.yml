@@ -1,0 +1,120 @@
+services:
+
+  nsc-admin:
+    # https://hub.docker.com/r/natsio/nats-box/tags
+    image: natsio/nats-box:0.17.0
+    entrypoint: sh -c '/docker-entrypoint.sh'
+    environment:
+      NATS_HOSTNAME: nats
+      NATS_PORT: 4222
+      NATS_HTTP_PORT: 8222
+      NATS_WEBSOCKET_PORT: 8080
+    volumes:
+      - ./nsc-admin/init.sh:/docker-entrypoint.sh
+      - nats_config:/config
+      - nats_nsc_data:/nsc
+    networks:
+      - infra-private
+
+  nats:
+    # https://hub.docker.com/_/nats
+    image: nats:2.11.1-binary-alpine3.21
+    volumes:
+    - nats_config:/config
+    - nats_jetstream_data:/jsdata
+    depends_on:
+      nsc-admin:
+        condition: 'service_started'
+    command: '--config /config/nats-server.conf'
+    networks:
+      - infra-private
+      - infra-public
+    ports:
+      - "0.0.0.0:4222:4222"
+      - "0.0.0.0:8222:8222"
+      - "0.0.0.0:8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "nats", "server", "ping", "-s", "localhost:4222"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  zitadel:
+    # https://github.com/zitadel/zitadel/pkgs/container/zitadel
+    image: ghcr.io/zitadel/zitadel:v2.71.6
+    # The user should have the permission to write to ./machinekey
+    user: "${UID:-1000}"
+    networks:
+      - infra-private
+      - infra-public
+    ports:
+      - "0.0.0.0:8888:8080"
+    command: 'start-from-init --masterkey "MasterkeyNeedsToHave32Characters" --tlsMode disabled'
+    environment:
+      ZITADEL_DATABASE_POSTGRES_HOST: zitadel-db
+      ZITADEL_DATABASE_POSTGRES_PORT: 5432
+      ZITADEL_DATABASE_POSTGRES_DATABASE: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_USERNAME: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE: disable
+      ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME: postgres
+      ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: postgres
+      ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
+      ZITADEL_EXTERNALSECURE: false
+      ZITADEL_FIRSTINSTANCE_MACHINEKEYPATH: /machinekey/zitadel-admin-sa.json
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_USERNAME: zitadel-admin-sa
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_NAME: Admin
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINEKEY_TYPE: 1
+    depends_on:
+      zitadel-db:
+        condition: 'service_healthy'
+    volumes:
+      - zitadel_machinekey_vol:/machinekey
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    # disabled due to: https://github.com/zitadel/zitadel/issues/9495
+    # healthcheck:
+    #   test: ["CMD-SHELL", "/app/zitadel", "ready"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 5
+    #   start_period: 20s
+
+  zitadel-db:
+    restart: unless-stopped
+    image: postgres:16-alpine
+    environment:
+      PGUSER: postgres
+      POSTGRES_PASSWORD: postgres
+    networks:
+      - infra-private
+    volumes:
+      - zitadel_db_vol:/var/lib/postgresql/data 
+    deploy:
+      # endpoint_mode: dnsrr
+      resources:
+        limits:
+          memory: 1G
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready", "-d", "zitadel", "-U", "postgres"]
+      interval: '10s'
+      timeout: '30s'
+      retries: 5
+      start_period: '20s'
+
+volumes:
+  zitadel_machinekey_vol:
+  zitadel_db_vol:
+  nats_config:
+  nats_nsc_data:
+  nats_jetstream_data:
+
+networks:
+  infra-private:
+  infra-public:
+    external: true
