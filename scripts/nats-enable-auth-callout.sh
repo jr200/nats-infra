@@ -2,6 +2,15 @@
 
 echo_stderr() { echo "$@" 1>&2; }
 
+# function to set env, or default if not specified
+set_env_or_default() {
+    local var_name=$1
+    local default_value=$2
+    if [ -z "${!var_name}" ]; then
+        export "$var_name=$default_value"
+    fi
+}
+
 help() {
     cat << EOF 1>&2
 
@@ -17,6 +26,7 @@ Required:
     NSC_CONTAINER       Name of a container that can adminster credentials on the NATS server (requires nsc).
 
 Optional:
+    IAM_NAME            Name of the IAM broker service (default: <ACCOUNT_NAME>-iam-broker-svc)
     USER_NAME           Name of the user running the auth-callout micro-service (default: ac-user)
     USER_NAME_SENTINEL  Name of the sentinel user to direct to the auth-callout micro-service (default: nobody)
     OUTPUT_DIR          Output folder for credentials (default: .)
@@ -28,19 +38,13 @@ Example:
     export ACCOUNT_NAME=MY-MINT
     export USER_NAME=ac-user
     export USER_NAME_SENTINEL=nobody
+    export IAM_NAME=MY-MINT-iam-broker-svc
     export NATS_CONTAINER=nats-1
     export NSC_CONTAINER=nsc-admin-1
     export NATS_URL=nats://127.0.0.1:4222
     export CONTAINER_CLI=podman
 EOF
 }
-
-# Set defaults if not provided
-USER_NAME=${USER_NAME:-ac-user}
-USER_NAME_SENTINEL=${USER_NAME_SENTINEL:-nobody}
-NATS_URL=${NATS_URL:-nats://127.0.0.1:4222}
-CONTAINER_CLI=${CONTAINER_CLI:-podman}
-OUTPUT_DIR=${OUTPUT_DIR:-./nats-secrets}
 
 # Validate required environment variables
 if [ -z "$OPERATOR_NAME" ] || [ -z "$ACCOUNT_NAME" ] || \
@@ -49,6 +53,15 @@ if [ -z "$OPERATOR_NAME" ] || [ -z "$ACCOUNT_NAME" ] || \
     help
     exit 1
 fi
+
+# Set defaults if not provided
+set_env_or_default USER_NAME "ac-user"
+set_env_or_default USER_NAME_SENTINEL "nobody"
+set_env_or_default NATS_URL "nats://127.0.0.1:4222"
+set_env_or_default CONTAINER_CLI "podman"
+set_env_or_default OUTPUT_DIR "./nats-secrets"
+set_env_or_default IAM_NAME "${ACCOUNT_NAME}-iam-broker-svc"
+
 
 mkdir -p ${OUTPUT_DIR}
 
@@ -122,6 +135,11 @@ if 1>&2 nsc describe user ${USER_NAME} &> /dev/null; then
 else
     echo_stderr "Creating new user ${USER_NAME}..."
     nsc add user --account ${ACCOUNT_NAME} --name ${USER_NAME}
+    nsc edit user \
+        --account ${ACCOUNT_NAME} \
+        --name ${USER_NAME} \
+        --allow-pub "${IAM_NAME}.evt.audit.account.*.user.*.created" \
+        --allow-pub '$SYS._INBOX.>'
 fi
 
 if 1>&2 nsc describe user ${USER_NAME_SENTINEL} &> /dev/null; then
