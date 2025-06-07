@@ -19,6 +19,8 @@ port: ${NATS_PORT}
 # monitor_port: 8222
 http_port: ${NATS_HTTP_PORT}
 
+max_payload: 8M
+
 jetstream {
     store_dir: /jsdata
 

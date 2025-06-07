@@ -2,7 +2,7 @@ services:
 
   nsc-admin:
     # https://hub.docker.com/r/natsio/nats-box/tags
-    image: natsio/nats-box:0.17.0
+    image: natsio/nats-box:0.18.0
     entrypoint: sh -c '/docker-entrypoint.sh'
     environment:
       NATS_HOSTNAME: nats
@@ -17,8 +17,8 @@ services:
       - infra-private
 
   nats:
-    # https://hub.docker.com/_/nats
-    image: nats:2.11.1-binary-alpine3.21
+    # https://hub.docker.com/_/nats/tags
+    image: nats:2.11.4-alpine3.22
     volumes:
     - nats_config:/config
     - nats_jetstream_data:/jsdata
@@ -43,7 +43,7 @@ services:
 
   zitadel:
     # https://github.com/zitadel/zitadel/pkgs/container/zitadel
-    image: ghcr.io/zitadel/zitadel:v2.71.6
+    image: ghcr.io/zitadel/zitadel:v2.71.12
     # The user should have the permission to write to ./machinekey
     user: "${UID:-1000}"
     networks:

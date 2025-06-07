@@ -151,7 +151,7 @@ fi
 
 PUBKEY_USER_NAME=`nsc describe user --account ${ACCOUNT_NAME} --name ${USER_NAME} --field sub | jq -r`
 
-nsc generate nkey --curve 2> ${OUTPUT_DIR}/${ACCOUNT_NAME}-enc.xk
+nsc generate nkey --curve > ${OUTPUT_DIR}/${ACCOUNT_NAME}-enc.xk
 PUBKEY_AUTH_CALLOUT_ENCRYPT=`sed -n 2,1p ${OUTPUT_DIR}/${ACCOUNT_NAME}-enc.xk`
 
 nsc edit authcallout \
