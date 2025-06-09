@@ -39,7 +39,7 @@ OUTPUT_DIR=${OUTPUT_DIR:-./nats-secrets}
 function extract_signing_key() {
   local account=$1
   acct_sk=$(nsc describe account ${account} --json | jq -r '.nats.signing_keys[0]')
-  nsc export keys --account ${account} --dir . --filter $acct_sk --force
+  1>&2 nsc export keys --account ${account} --dir . --filter $acct_sk --force
   KEY_FILE=${acct_sk}.nk
   if [ -f "${KEY_FILE}" ]; then
     sk=$(cat ${KEY_FILE} | tr -d '[:space:]')

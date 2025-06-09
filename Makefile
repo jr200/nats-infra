@@ -1,13 +1,17 @@
-TEAM_NAME:=infra-team
-OPERATOR_NAME:=local-operator
+include .env.local
 
 all: down up
 
 config-networks:
 	podman network create -d bridge --ignore --internal infra-public
 
-up: config-networks
-	podman compose -f compose-infra.yaml -p ${TEAM_NAME} up -d
+init-nats: config-networks
+	nats auth operator add --signing-key ${OPERATOR_NAME} || echo "Using existing operator."
+	nsc select operator ${OPERATOR_NAME}
+	nsc generate config --nats-resolver --sys-account SYSTEM | podman run --rm -i -v ${TEAM_NAME}_nats_config:/data busybox sh -c '[ -f /data/resolver.conf ] || cat > /data/resolver.conf'
+
+up: 
+	podman compose --env-file .env.local -f compose-infra.yaml -p ${TEAM_NAME} up -d
 
 down:
 	podman compose  -f compose-infra.yaml -p ${TEAM_NAME} down || echo "No running containers"

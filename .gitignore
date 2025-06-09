@@ -6,4 +6,4 @@ nats-secrets/
 *.creds
 *.jwt
 *.bak
-
+*-secret.json

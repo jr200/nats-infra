@@ -11,21 +11,21 @@ It then imports the account credentials *into* a running NATS server.
 This script requires the following environment variables:
 
 Required:
-    OPERATOR_NAME    Name of the local NATS operator to create
-    ACCOUNT_NAME     Name of the local+remote NATS account to create
-    NATS_CONTAINER   Name of the container running the NATS server
-    NSC_CONTAINER    Name of a container that can adminster credentials on the NATS server (requires nsc).
+    OPERATOR_NAME      Name of the local NATS operator to create
+    ACCOUNT_NAME       Name of the local+remote NATS account to create
+    NATS_CONTAINER     Name of the container running the NATS server
+    NATSBOX_CONTAINER  Name of a container that can adminster credentials on the NATS server (requires nsc).
 
 Optional:
-    USER_NAME        Name of a local NATS user to create
-    NATS_URL         URL of the NATS server (default: nats://127.0.0.1:4222)
-    CONTAINER_CLI    Container CLI to use, podman|docker|kubectl (default: podman)
+    USER_NAME          Name of a local NATS user to create
+    NATS_URL           URL of the NATS server (default: nats://127.0.0.1:4222)
+    CONTAINER_CLI      Container CLI to use, podman|docker|kubectl (default: podman)
 
 Example:
     export OPERATOR_NAME=local-operator
     export ACCOUNT_NAME=MY-TEAM
     export NATS_CONTAINER=nats-1
-    export NSC_CONTAINER=nsc-admin-1
+    export NATSBOX_CONTAINER=natsbox-init-1
     export USER_NAME=static-user
     export NATS_URL=nats://127.0.0.1:4222
     export CONTAINER_CLI=podman
@@ -36,9 +36,16 @@ EOF
 NATS_URL=${NATS_URL:-nats://127.0.0.1:4222}
 CONTAINER_CLI=${CONTAINER_CLI:-podman}
 
+if [ -z "$NATSBOX_CONTAINER" ]; then
+    REMOTE_NSC_CMD="nsc"
+else
+    REMOTE_NSC_CMD="${CONTAINER_CLI} exec -it ${NATSBOX_CONTAINER} nsc"
+fi
+
+
 # Validate required environment variables
 if [ -z "$OPERATOR_NAME" ] || [ -z "$ACCOUNT_NAME" ] || \
-   [ -z "$NATS_CONTAINER" ] || [ -z "$NSC_CONTAINER" ]; then
+   [ -z "$NATS_CONTAINER" ] ; then
     echo_stderr "Error: Missing required environment variables"
     help
     exit 1
@@ -73,8 +80,8 @@ else
 fi
 echo_stderr "AccountId.local:  ${local_account_id}"
 
-if ${CONTAINER_CLI} exec -it ${NSC_CONTAINER} nsc describe account -n ${ACCOUNT_NAME} &> /dev/null; then
-    remote_account_id=`${CONTAINER_CLI} exec -it ${NSC_CONTAINER} nsc describe account -n ${ACCOUNT_NAME} --json | jq -r .sub | tr -d '\n'`
+if ${REMOTE_NSC_CMD} describe account -n ${ACCOUNT_NAME} &> /dev/null; then
+    remote_account_id=`${REMOTE_NSC_CMD} describe account -n ${ACCOUNT_NAME} --json | jq -r .sub | tr -d '\n'`
 else
     remote_account_id="?"
 fi
@@ -90,7 +97,7 @@ if [ "$remote_account_id" != "?" ]; then
         #  local and remote account do not match
         echo_stderr "Error: Account ${ACCOUNT_NAME} already exists on remote with a different identity."
         echo_stderr "To delete remote account, run: "
-        echo_stderr "  ${CONTAINER_CLI} exec -it ${NSC_CONTAINER} nsc delete account -n ${ACCOUNT_NAME} -C -D -R"
+        echo_stderr "  ${REMOTE_NSC_CMD} delete account -n ${ACCOUNT_NAME} -C -D -R"
         exit 1
     fi
 fi
@@ -118,21 +125,26 @@ fi
 echo_stderr "Selected account ${ACCOUNT_NAME}"
 
 # ----------------------------------------------------------------------------
-# Import the local account into the target NATS server
+# Import the public key of thelocal account into the target NATS server
 # ----------------------------------------------------------------------------
-echo_stderr "Importing local account ${ACCOUNT_NAME} into NATS keystore..."
-nsc describe account ${ACCOUNT_NAME} --raw --output-file pubkey-account-jwt.tmp
+if [ ! -z "${NATSBOX_CONTAINER}" ]; then
+    echo_stderr "Importing local account ${ACCOUNT_NAME} into NATS keystore..."
+    nsc describe account ${ACCOUNT_NAME} --raw --output-file pubkey-account-jwt.tmp
 
-1>&2 ${CONTAINER_CLI} cp pubkey-account-jwt.tmp ${NSC_CONTAINER}:/tmp/import.jwt
-1>&2 ${CONTAINER_CLI} exec -it ${NSC_CONTAINER} nsc import account --file /tmp/import.jwt --force --overwrite 
-1>&2 ${CONTAINER_CLI} exec -it ${NSC_CONTAINER} nsc push -A
+    1>&2 ${CONTAINER_CLI} cp pubkey-account-jwt.tmp ${NATSBOX_CONTAINER}:/tmp/import.jwt
+    1>&2 ${REMOTE_NSC_CMD} import account --file /tmp/import.jwt --force --overwrite
+    1>&2 ${REMOTE_NSC_CMD} push -A
 
-1>&2 ${CONTAINER_CLI} exec -it ${NSC_CONTAINER} rm -f /tmp/import.jwt
-rm -f pubkey-account-jwt.tmp
+    1>&2 ${CONTAINER_CLI} exec -it ${NATSBOX_CONTAINER} rm -f /tmp/import.jwt
+    rm -f pubkey-account-jwt.tmp
 
-1>&2 ${CONTAINER_CLI} exec -it ${NATS_CONTAINER} nats-server --signal reload
+    1>&2 ${CONTAINER_CLI} exec -it ${NATS_CONTAINER} nats-server --signal reload
 
-echo_stderr "Account ${ACCOUNT_NAME} imported successfully."
+    echo_stderr "Account ${ACCOUNT_NAME} imported successfully."
+else
+    1>&2 nats auth account push --operator ${OPERATOR_NAME} -s ${NATS_URL} --show ${ACCOUNT_NAME}
+fi
+
 
 # ----------------------------------------------------------------------------
 # Create a local user

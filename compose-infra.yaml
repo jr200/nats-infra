@@ -1,16 +1,24 @@
 services:
 
-  nsc-admin:
+  natsbox-init:
     # https://hub.docker.com/r/natsio/nats-box/tags
     image: natsio/nats-box:0.18.0
     entrypoint: sh -c '/docker-entrypoint.sh'
     environment:
-      NATS_HOSTNAME: nats
-      NATS_PORT: 4222
-      NATS_HTTP_PORT: 8222
-      NATS_WEBSOCKET_PORT: 8080
+      # These are set by the .env.local file
+      TEAM_NAME: ${TEAM_NAME}
+      OPERATOR_NAME: ${OPERATOR_NAME}
+
+      NATSBOX_GENERATE_OPERATOR: ${NATSBOX_GENERATE_OPERATOR}
+      NATSBOX_KEEP_ALIVE: ${NATSBOX_KEEP_ALIVE}
+      NATS_SERVER_NAME: ${NATS_SERVER_NAME}
+      NATS_HOSTNAME: ${NATS_HOSTNAME}
+      NATS_PORT: ${NATS_PORT}
+      NATS_HTTP_PORT: ${NATS_HTTP_PORT}
+      NATS_WEBSOCKET_PORT: ${NATS_WEBSOCKET_PORT}
+      NATS_MAX_PAYLOAD: ${NATS_MAX_PAYLOAD}
     volumes:
-      - ./nsc-admin/init.sh:/docker-entrypoint.sh
+      - ./natsbox-init/init.sh:/docker-entrypoint.sh
       - nats_config:/config
       - nats_nsc_data:/nsc
     networks:
@@ -23,7 +31,7 @@ services:
     - nats_config:/config
     - nats_jetstream_data:/jsdata
     depends_on:
-      nsc-admin:
+      natsbox-init:
         condition: 'service_started'
     command: '--config /config/nats-server.conf'
     networks:
